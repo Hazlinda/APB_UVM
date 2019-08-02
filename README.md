@@ -275,53 +275,52 @@
     
 # APB_monitor.sv (Monitor)
 
-`ifndef APB_MONITOR__SV
-`define APB_MONITOR__SV
+	`ifndef APB_MONITOR__SV
+	`define APB_MONITOR__SV
+
+	typedef class apb_monitor;
+
+	class apb_monitor_cbs extends uvm_callback;
+  	  virtual function void trans_observed(apb_monitor xactor,apb_rw cycle);
+  	  endfunction:trans_observed
+	endclass: apb_monitor_cbs
 
 
-typedef class apb_monitor;
+	class apb_monitor extends uvm_monitor;
+   	  virtual apb_if.passive sigs;
 
-class apb_monitor_cbs extends uvm_callback;
-  virtual function void trans_observed(apb_monitor xactor,apb_rw cycle);
-  endfunction:trans_observed
-endclass: apb_monitor_cbs
+   	uvm_analysis_port#(apb_rw) ap;
+   	apb_config cfg;
 
+   	//`uvm_component_utils(apb_monitor)
 
-class apb_monitor extends uvm_monitor;
-   virtual apb_if.passive sigs;
-
-   uvm_analysis_port#(apb_rw) ap;
-   apb_config cfg;
-
-   //`uvm_component_utils(apb_monitor)
-
-   `uvm_component_utils_begin(apb_monitor)
-//   `uvm_object_utils(cfg)
-   `uvm_component_utils_end
+   	`uvm_component_utils_begin(apb_monitor)
+	//   `uvm_object_utils(cfg)
+   	`uvm_component_utils_end
 
 
-   function new(string name, uvm_component parent = null);
-      super.new(name, parent);
-      ap = new("ap", this);
-   endfunction: new
+   	function new(string name, uvm_component parent = null);
+      	  super.new(name, parent);
+      	  ap = new("ap", this);
+   	endfunction: new
 
-   virtual function void build_phase(uvm_phase phase);
-      apb_agent agent;
-      if ($cast(agent, get_parent()) && agent != null) begin
+   	virtual function void build_phase(uvm_phase phase);
+      	  apb_agent agent;
+      	  if ($cast(agent, get_parent()) && agent != null) begin
          sigs = agent.vif;
-      end
-      else begin
-         virtual apb_if tmp;
-         if (!uvm_config_db#(apb_vif)::get(this, "", "vif", tmp)) begin
+      	end
+      	else begin
+            virtual apb_if tmp;
+         	if (!uvm_config_db#(apb_vif)::get(this, "", "vif", tmp)) begin
             `uvm_fatal("APB/MON/NOVIF", "No virtual interface specified for this monitor instance")
          end
-         sigs = tmp;
-      end
-   endfunction
+         	sigs = tmp;
+      	end
+   	endfunction
 
-   virtual task run_phase(uvm_phase phase);
-      super.run_phase(phase);
-      forever begin
+   	virtual task run_phase(uvm_phase phase);
+      	   super.run_phase(phase);
+      	   forever begin
          apb_rw tr;
          
          // Wait for a SETUP cycle
@@ -346,98 +345,96 @@ class apb_monitor extends uvm_monitor;
          trans_observed(tr);
          `uvm_do_callbacks(apb_monitor,apb_monitor_cbs,trans_observed(this,tr))
 
-         ap.write(tr);
-      end
-   endtask: run_phase
+           ap.write(tr);
+      	end
+   	endtask: run_phase
 
-   virtual protected task trans_observed(apb_rw tr);
-   endtask
+   	virtual protected task trans_observed(apb_rw tr);
+   	endtask
 
-endclass: apb_monitor
+	endclass: apb_monitor
 
-`endif
+	`endif
 
 
 # APB_rw.sv (Read Write)
 
-`ifndef APB_RW__SV
-`define APB_RW__SV
+	`ifndef APB_RW__SV
+	`define APB_RW__SV
 
-class apb_rw extends uvm_sequence_item;
+	class apb_rw extends uvm_sequence_item;
   
-   typedef enum {READ, WRITE} kind_e;
-   rand bit   [31:0] addr;
-   rand logic [31:0] data;
-   rand kind_e kind;  
+   	typedef enum {READ, WRITE} kind_e;
+   	rand bit   [31:0] addr;
+   	rand logic [31:0] data;
+   	rand kind_e kind;  
  
-   `uvm_object_utils_begin(apb_rw)
-     `uvm_field_int(addr, UVM_ALL_ON | UVM_NOPACK);
-     `uvm_field_int(data, UVM_ALL_ON | UVM_NOPACK);
-     `uvm_field_enum(kind_e,kind, UVM_ALL_ON | UVM_NOPACK);
-   `uvm_object_utils_end
+   	`uvm_object_utils_begin(apb_rw)
+     	`uvm_field_int(addr, UVM_ALL_ON | UVM_NOPACK);
+     	`uvm_field_int(data, UVM_ALL_ON | UVM_NOPACK);
+     	`uvm_field_enum(kind_e,kind, UVM_ALL_ON | UVM_NOPACK);
+   	`uvm_object_utils_end
    
-   function new (string name = "apb_rw");
-      super.new(name);
-   endfunction
+   	function new (string name = "apb_rw");
+           super.new(name);
+        endfunction
 
-   function string convert2string();
-     return $sformatf("kind=%s addr=%0h data=%0h",kind,addr,data);
-   endfunction
+   	function string convert2string();
+     	   return $sformatf("kind=%s addr=%0h data=%0h",kind,addr,data);
+   	endfunction
 
-endclass: apb_rw
-
-
-class reg2apb_adapter extends uvm_reg_adapter;
-
-  `uvm_object_utils(reg2apb_adapter)
-
-   function new(string name = "reg2apb_adapter");
-      super.new(name);
-   endfunction 
-
-  virtual function uvm_sequence_item reg2bus(const ref uvm_reg_bus_op rw);
-    apb_rw apb = apb_rw::type_id::create("apb_rw");
-    apb.kind = (rw.kind == UVM_READ) ? apb_rw::READ : apb_rw::WRITE;
-    apb.addr = rw.addr;
-    apb.data = rw.data;
-    return apb;
-  endfunction
-
-  virtual function void bus2reg(uvm_sequence_item bus_item,
-                                ref uvm_reg_bus_op rw);
-    apb_rw apb;
-    if (!$cast(apb,bus_item)) begin
-      `uvm_fatal("NOT_APB_TYPE","Provided bus_item is not of the correct type")
-      return;
-    end
-    rw.kind = apb.kind == apb_rw::READ ? UVM_READ : UVM_WRITE;
-    rw.addr = apb.addr;
-    rw.data = apb.data;
-    rw.status = UVM_IS_OK;
-  endfunction
-
-endclass
+	endclass: apb_rw
 
 
-`endif
+	class reg2apb_adapter extends uvm_reg_adapter;
+
+  	`uvm_object_utils(reg2apb_adapter)
+
+   	function new(string name = "reg2apb_adapter");
+      		super.new(name);
+   	endfunction 
+
+  	virtual function uvm_sequence_item reg2bus(const ref uvm_reg_bus_op rw);
+    	  apb_rw apb = apb_rw::type_id::create("apb_rw");
+    	  apb.kind = (rw.kind == UVM_READ) ? apb_rw::READ : apb_rw::WRITE;
+    	  apb.addr = rw.addr;
+    	  apb.data = rw.data;
+    	  return apb;
+  	endfunction
+
+  	virtual function void bus2reg(uvm_sequence_item bus_item,
+           ref uvm_reg_bus_op rw);
+    	apb_rw apb;
+    	if (!$cast(apb,bus_item)) begin
+      	`uvm_fatal("NOT_APB_TYPE","Provided bus_item is not of the correct type")
+      	return;
+    	end
+          rw.kind = apb.kind == apb_rw::READ ? UVM_READ : UVM_WRITE;
+          rw.addr = apb.addr;
+          rw.data = apb.data;
+    	  rw.status = UVM_IS_OK;
+  	endfunction
+
+	endclass
+	`endif
 
 
 # apb_sequencer.sv (Sequencer)
 
-`ifndef APB_SEQUENCER__SV
-`define APB_SEQUENCER__SV
+	`ifndef APB_SEQUENCER__SV
+	`define APB_SEQUENCER__SV
 
-class apb_sequencer extends uvm_sequencer #(apb_rw);
+	class apb_sequencer extends uvm_sequencer #(apb_rw);
 
-   `uvm_component_utils(apb_sequencer)
+  	 `uvm_component_utils(apb_sequencer)
 
-   function new(input string name, uvm_component parent=null);
-      super.new(name, parent);
-   endfunction : new
+   	function new(input string name, uvm_component parent=null);
+      	   super.new(name, parent);
+   	endfunction : new
 
-endclass : apb_sequencer
+	endclass : apb_sequencer
 
-`endif
+	`endif
 
 
  
